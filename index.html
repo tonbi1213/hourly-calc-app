@@ -1018,18 +1018,7 @@ function polar(r, angleDeg) {
   const a = (angleDeg - 90) * Math.PI / 180;
   return [150 + r * Math.cos(a), 150 + r * Math.sin(a)];
 }
-// 0〜1440分 → 0〜360度（24時間で一周）
-function minToDeg24(m) { return (m / 1440) * 360; }
-
-function arcPath24(r, s, e) {
-  const a1 = minToDeg24(s), a2 = minToDeg24(e);
-  const [x1,y1] = polar(r, a1);
-  const [x2,y2] = polar(r, a2);
-  const large = (e - s) > 720 ? 1 : 0;
-  return `M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r},0,${large},1,${x2.toFixed(2)},${y2.toFixed(2)}`;
-}
-
-/* ── Draw clock（24時間・1本リング）── */
+/* ── Draw clock（12時間・1本リング）── */
 function renderClock() {
   const svg = document.getElementById('clockSVG');
   const area = svg.closest('.clock-area');
@@ -1047,17 +1036,17 @@ function renderClock() {
   svg.appendChild(mk('circle', { cx:CX, cy:CY, r:147, fill:'#ffffff' }));
   svg.appendChild(mk('circle', { cx:CX, cy:CY, r:147, fill:'none', stroke:'#e4e3e0', 'stroke-width':'1' }));
 
-  // 目盛り（24時間）
-  for (let i = 0; i < 24; i++) {
-    const angle  = (i / 24) * 360;
-    const major  = i % 3 === 0;
+  // 目盛り（60本・通常時計）
+  for (let i = 0; i < 60; i++) {
+    const isHour = i % 5 === 0;
+    const angle  = (i / 60) * 360;
     const [x1,y1] = polar(141, angle);
-    const [x2,y2] = polar(major ? 130 : 136, angle);
+    const [x2,y2] = polar(isHour ? 130 : 136, angle);
     svg.appendChild(mk('line', {
       x1:x1.toFixed(2), y1:y1.toFixed(2),
       x2:x2.toFixed(2), y2:y2.toFixed(2),
-      stroke: major ? '#b8b5b0' : '#dbd9d5',
-      'stroke-width': major ? '1.5' : '0.8',
+      stroke: isHour ? '#b8b5b0' : '#dbd9d5',
+      'stroke-width': isHour ? '1.5' : '0.8',
       'stroke-linecap': 'round'
     }));
   }
@@ -1068,34 +1057,41 @@ function renderClock() {
     stroke:'#eeece9', 'stroke-width': RING_W
   }));
 
-  // 各クライアントの稼働時間アーク
+  // 各クライアントのアーク（AM・PMを同じリングに重ねて描画）
+  const drawArc = (s12, e12, color, tip) => {
+    if (e12 <= s12) return;
+    const a1 = (s12 / 720) * 360, a2 = (e12 / 720) * 360;
+    const [x1,y1] = polar(RING_R, a1);
+    const [x2,y2] = polar(RING_R, a2);
+    const large = (e12 - s12) > 360 ? 1 : 0;
+    const d = `M${x1.toFixed(2)},${y1.toFixed(2)} A${RING_R},${RING_R},0,${large},1,${x2.toFixed(2)},${y2.toFixed(2)}`;
+    const path = mk('path', { d, fill:'none', stroke:color, 'stroke-width':RING_W, 'stroke-linecap':'round', opacity:'0.88' });
+    const t = mk('title', {}); t.textContent = tip; path.appendChild(t);
+    svg.appendChild(path);
+  };
+
   clients.forEach(client => {
     client.blocks.forEach(block => {
       const s = t2m(block.start), e = t2m(block.end);
       if (e <= s) return;
-      const path = mk('path', {
-        d: arcPath24(RING_R, s, e),
-        fill:'none', stroke: client.color,
-        'stroke-width': RING_W, 'stroke-linecap':'round',
-        opacity:'0.88'
-      });
-      const tip = mk('title', {});
-      tip.textContent = `${client.name}  ${block.start}〜${block.end}  ${fmt(bEarn(client,block))}`;
-      path.appendChild(tip);
-      svg.appendChild(path);
+      const tip = `${client.name}  ${block.start}〜${block.end}  ${fmt(bEarn(client,block))}`;
+      // AM（0〜720分）
+      drawArc(Math.max(s, 0),   Math.min(e, 720),        client.color, tip);
+      // PM（720〜1440分 → 0〜720にマッピング）
+      if (e > 720)
+        drawArc(Math.max(s,720)-720, Math.min(e,1440)-720, client.color, tip);
     });
   });
 
-  // 時刻ラベル（0, 3, 6, 9, 12, 15, 18, 21）
-  [0,3,6,9,12,15,18,21].forEach(h => {
-    const [x,y] = polar(122, (h/24)*360);
+  // 数字（12, 1, 2 … 11）
+  ['12','1','2','3','4','5','6','7','8','9','10','11'].forEach((lbl, h) => {
+    const [x,y] = polar(122, (h/12)*360);
     svg.appendChild(mk('text', {
       x:x.toFixed(2), y:y.toFixed(2),
       'text-anchor':'middle', 'dominant-baseline':'central',
-      fill:'#b0ada8', 'font-size':'9',
-      'font-family':'Segoe UI, Helvetica Neue, sans-serif',
-      'font-weight':'600'
-    }, String(h)));
+      fill:'#b0ada8', 'font-size':'9.5',
+      'font-family':'Segoe UI, Helvetica Neue, sans-serif', 'font-weight':'600'
+    }, lbl));
   });
 
   // 中心
