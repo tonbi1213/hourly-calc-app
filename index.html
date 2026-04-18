@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>時給計算アプリ</title>
+  <style>
+    :root {
+      --bg:       #f2f1ef;
+      --surface:  #ffffff;
+      --card:     #ffffff;
+      --border:   #e4e3e0;
+      --border2:  #d0cfcc;
+      --text:     #1a1917;
+      --text2:    #6b6860;
+      --text3:    #a8a59f;
+      --accent:   #3a3835;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    header {
+      height: 52px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-left { display: flex; align-items: center; gap: 9px; }
+    .header-mark {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    header h1 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text);
+    }
+
+    .add-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 14px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .add-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+    .pdf-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 14px;
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: all 0.15s;
+    }
+    .pdf-btn:hover { background: var(--bg); color: var(--text); border-color: var(--text3); }
+
+    /* ── PRINT ── */
+    @media print {
+      @page { size: A4 landscape; margin: 10mm 12mm; }
+
+      /* ページ全体のコンテナをリセット */
+      *, *::before, *::after {
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      body {
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+      }
+
+      header {
+        height: auto !important;
+        padding: 6px 0 8px !important;
+        border-bottom: 1px solid #ccc;
+        margin-bottom: 0;
+      }
+      .add-btn, .pdf-btn          { display: none !important; }
+      .icon-btn, .del-block,
+      .add-block-btn              { display: none !important; }
+      .color-wrap input[type="color"] { display: none !important; }
+      .workdays-spinner button    { display: none !important; }
+      .rate-spinner button        { display: none !important; }
+
+      .layout {
+        display: grid !important;
+        grid-template-columns: 240px 1fr !important;
+        height: auto !important;
+        min-height: 0 !important;
+        gap: 12px;
+      }
+      .patterns-panel { display: none !important; }
+      .mobile-tabs    { display: none !important; }
+
+      .sidebar {
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 10px 8px !important;
+      }
+
+      .main {
+        display: flex !important;
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: 0 !important;
+      }
+
+      .clock-area {
+        flex: none !important;
+        height: auto !important;
+        padding: 8px 16px !important;
+        gap: 10px !important;
+      }
+
+      /* 時計を印刷サイズに固定 */
+      #clockSVG {
+        width: 200px !important;
+        height: 200px !important;
+      }
+      .clock-svg-wrap { filter: none !important; }
+
+      .summary-bar {
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 8px 12px !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+        page-break-inside: avoid;
+      }
+
+      .client-card { break-inside: avoid; }
+      .summ-total, .summ-month { page-break-inside: avoid; }
+    }
+
+    /* ── LAYOUT ── */
+    .layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 300px 1fr 280px;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* client card */
+    .client-card {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 12px 13px;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+    }
+
+    .card-header {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 9px;
+    }
+    .color-wrap { position: relative; width: 18px; height: 18px; flex-shrink: 0; }
+    .color-swatch {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(0,0,0,0.12);
+      cursor: pointer;
+    }
+    .color-wrap input[type="color"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 18px; height: 18px;
+    }
+    .name-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      padding: 3px 2px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .name-input:focus { outline: none; border-bottom-color: var(--accent); }
+
+    .icon-btn {
+      background: none; border: none;
+      color: var(--text3);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 2px 5px;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+    .icon-btn:hover { color: #c0392b; }
+
+    .rate-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 9px;
+    }
+    .rate-row label { font-size: 0.7rem; color: var(--text3); }
+    .rate-unit { font-size: 0.7rem; color: var(--text3); }
+
+    /* ── Selects ── */
+    select.sel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 3px 5px;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      text-align: center;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23a8a59f'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 5px center;
+      padding-right: 18px;
+      transition: border-color 0.15s;
+    }
+    select.sel:focus { outline: none; border-color: var(--accent); }
+    select.sel:hover { border-color: var(--border2); }
+    select.sel-h { width: 52px; }
+    select.sel-m { width: 52px; }
+    select.sel-rate { width: 86px; }
+
+    /* ── Rate spinner ── */
+    .rate-spinner {
+      display: flex; align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .rate-spinner:focus-within { border-color: var(--accent); }
+    .rate-spinner button {
+      background: none; border: none;
+      color: var(--text2);
+      font-size: 0.9rem; font-weight: 700;
+      width: 24px; height: 26px;
+      cursor: pointer; flex-shrink: 0;
+      transition: background 0.12s, color 0.12s;
+      line-height: 1;
+    }
+    .rate-spinner button:hover { background: var(--border); color: var(--text); }
+    .rate-spinner button:active { background: var(--border2); }
+    .rate-spinner input[type="number"] {
+      width: 62px;
+      background: transparent; border: none;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      color: var(--text);
+      padding: 3px 4px;
+      font-size: 0.8rem; font-family: inherit;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    .rate-spinner input[type="number"]::-webkit-inner-spin-button,
+    .rate-spinner input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .rate-spinner input[type="number"]:focus { outline: none; }
+
+    .sep-colon { font-size: 0.75rem; color: var(--text3); margin: 0 1px; }
+
+    .blocks { display: flex; flex-direction: column; gap: 5px; }
+    .block-row {
+      display: flex; align-items: center; gap: 4px;
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 5px 8px;
+    }
+    .sep { font-size: 0.7rem; color: var(--text3); margin: 0 2px; }
+    .block-earn {
+      margin-left: auto;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text2);
+      white-space: nowrap;
+    }
+    .del-block {
+      background: none; border: none;
+      color: var(--text3); cursor: pointer;
+      font-size: 0.68rem; padding: 1px 3px;
+      border-radius: 3px; transition: color 0.15s;
+    }
+    .del-block:hover { color: #c0392b; }
+
+    .add-block-btn {
+      width: 100%; margin-top: 5px;
+      padding: 4px;
+      background: none;
+      border: 1px dashed var(--border2);
+      border-radius: 6px;
+      color: var(--text3);
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .add-block-btn:hover { border-color: var(--accent); color: var(--text2); }
+
+    .card-foot {
+      margin-top: 8px;
+      display: flex; justify-content: flex-end;
+      font-size: 0.72rem;
+      color: var(--text3);
+    }
+    .card-foot strong { color: var(--text); margin-left: 5px; font-size: 0.8rem; }
+
+    /* ── MAIN ── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .clock-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 40px;
+      gap: 16px;
+      overflow: hidden;
+    }
+
+    .clock-svg-wrap {
+      filter: drop-shadow(0 2px 16px rgba(0,0,0,0.07));
+    }
+
+    /* AM/PM legend */
+    .clock-legend {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .legend-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.72rem;
+      color: var(--text3);
+      letter-spacing: 0.05em;
+    }
+    .legend-line {
+      width: 22px; height: 3px;
+      border-radius: 2px;
+    }
+    .legend-line.am { background: var(--text2); }
+    .legend-line.pm { background: var(--text2); opacity: 0.38; }
+
+    /* ring legend */
+    .ring-legend {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .ring-legend-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.7rem;
+      color: var(--text2);
+    }
+    .ring-swatch {
+      width: 18px; height: 5px; border-radius: 3px;
+    }
+
+    /* ── SUMMARY BAR ── */
+    .summary-bar {
+      height: 64px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      overflow-x: auto;
+    }
+    .summary-bar::-webkit-scrollbar { height: 2px; }
+    .summary-bar::-webkit-scrollbar-thumb { background: var(--border2); }
+
+    .summ-item {
+      display: flex; align-items: center; gap: 6px;
+      flex-shrink: 0;
+      padding: 5px 12px;
+      background: var(--bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .summ-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .summ-name { font-size: 0.76rem; color: var(--text2); }
+    .summ-hrs  { font-size: 0.68rem; color: var(--text3); margin-left: 2px; }
+    .summ-amt  { font-size: 0.82rem; font-weight: 700; color: var(--text); margin-left: 2px; }
+
+    .summ-total {
+      margin-left: auto;
+      flex-shrink: 0;
+      display: flex; align-items: baseline; gap: 6px;
+      padding: 7px 18px;
+      background: var(--accent);
+      border-radius: 9px;
+    }
+    .summ-total .lbl  { font-size: 0.7rem; color: rgba(255,255,255,0.6); }
+    .summ-total .val  { font-size: 1.25rem; font-weight: 700; color: #fff; }
+    .summ-total .unit { font-size: 0.7rem; color: rgba(255,255,255,0.55); }
+
+    /* ── Working days widget ── */
+    .workdays-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+    }
+    .workdays-row label { font-size: 0.72rem; color: var(--text3); }
+    .workdays-spinner {
+      display: flex; align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .workdays-spinner:focus-within { border-color: var(--accent); }
+    .workdays-spinner button {
+      background: none; border: none;
+      color: var(--text2);
+      font-size: 0.9rem; font-weight: 700;
+      width: 24px; height: 26px;
+      cursor: pointer; flex-shrink: 0;
+      transition: background 0.12s;
+    }
+    .workdays-spinner button:hover { background: var(--border); }
+    .workdays-spinner input[type="number"] {
+      width: 40px; background: transparent; border: none;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      color: var(--text);
+      padding: 3px 4px; font-size: 0.8rem; font-family: inherit;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    .workdays-spinner input[type="number"]::-webkit-inner-spin-button,
+    .workdays-spinner input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .workdays-spinner input[type="number"]:focus { outline: none; }
+    .workdays-unit { font-size: 0.72rem; color: var(--text3); }
+
+    .summ-month {
+      flex-shrink: 0;
+      display: flex; align-items: baseline; gap: 6px;
+      padding: 7px 18px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+    }
+    .summ-month .lbl  { font-size: 0.7rem; color: var(--text3); }
+    .summ-month .val  { font-size: 1.25rem; font-weight: 700; color: var(--text2); }
+    .summ-month .unit { font-size: 0.7rem; color: var(--text3); }
+
+    /* ── Patterns right panel ── */
+    .patterns-panel {
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 14px 12px 12px;
+      gap: 10px;
+    }
+    .patterns-panel-title {
+      font-size: 0.78rem; font-weight: 700;
+      color: var(--text2);
+      letter-spacing: 0.04em;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .pattern-save-row {
+      display: flex; gap: 6px;
+      flex-shrink: 0;
+    }
+    .pattern-name-in {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 5px 8px;
+      font-size: 0.78rem;
+      font-family: inherit;
+      min-width: 0;
+    }
+    .pattern-name-in:focus { outline: none; border-color: var(--accent); }
+    .pattern-name-in::placeholder { color: var(--text3); }
+    .pattern-save-btn {
+      padding: 5px 11px;
+      background: var(--accent);
+      color: #fff; border: none;
+      border-radius: 6px;
+      font-size: 0.75rem; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      flex-shrink: 0;
+      transition: opacity 0.15s;
+    }
+    .pattern-save-btn:hover { opacity: 0.8; }
+
+    .pattern-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .pattern-list::-webkit-scrollbar { width: 3px; }
+    .pattern-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .pattern-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 10px;
+      background: var(--bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      transition: border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .pattern-item:hover { border-color: var(--border2); }
+    .pattern-item-name {
+      flex: 1; font-size: 0.78rem; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .pattern-load-btn {
+      padding: 3px 9px;
+      background: none; border: 1px solid var(--border2);
+      border-radius: 5px; color: var(--text2);
+      font-size: 0.7rem; cursor: pointer;
+      transition: all 0.12s; white-space: nowrap; flex-shrink: 0;
+    }
+    .pattern-load-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .pattern-del-btn {
+      background: none; border: none;
+      color: var(--text3); cursor: pointer;
+      font-size: 0.68rem; padding: 2px 4px;
+      border-radius: 3px; transition: color 0.12s; flex-shrink: 0;
+    }
+    .pattern-del-btn:hover { color: #c0392b; }
+    .pattern-empty {
+      font-size: 0.75rem; color: var(--text3);
+      text-align: center; padding: 20px 0;
+      line-height: 1.8;
+    }
+
+    /* ── Mobile tabs (hidden on desktop) ── */
+    .mobile-tabs { display: none; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      /* タブナビを表示 */
+      .mobile-tabs {
+        display: flex;
+        flex-shrink: 0;
+        height: 56px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        z-index: 10;
+      }
+      .tab-btn {
+        flex: 1;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 3px;
+        border: none; background: none;
+        cursor: pointer;
+        color: var(--text3);
+        transition: color 0.15s;
+        font-family: inherit;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tab-btn.tab-active { color: var(--accent); }
+      .tab-icon  { font-size: 1.15rem; line-height: 1; }
+      .tab-label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em; }
+
+      /* レイアウトを1カラムに */
+      .layout {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: 1fr;
+        position: relative;
+      }
+      .sidebar, .main, .patterns-panel {
+        grid-column: 1; grid-row: 1;
+        display: none !important;
+      }
+      .sidebar.tab-active,
+      .main.tab-active,
+      .patterns-panel.tab-active {
+        display: flex !important;
+      }
+      .patterns-panel { border-left: none; border-top: 1px solid var(--border); }
+
+      /* ヘッダー */
+      header { padding: 0 14px; height: 48px; }
+      header h1 { font-size: 0.82rem; }
+      .pdf-btn { display: none !important; }
+      .add-btn { padding: 5px 12px; font-size: 0.75rem; }
+
+      /* サマリーバー */
+      .summary-bar {
+        height: auto !important;
+        flex-wrap: wrap;
+        padding: 7px 12px;
+        gap: 6px;
+      }
+      .summ-total { margin-left: 0; }
+      .summ-month { }
+
+      /* タッチしやすいボタンサイズ */
+      .rate-spinner button,
+      .workdays-spinner button { width: 34px !important; height: 34px !important; }
+      select.sel { font-size: 0.85rem; padding: 5px 18px 5px 5px; }
+      .block-row { padding: 7px 8px; }
+      .del-block { font-size: 0.85rem; padding: 4px 6px; }
+
+      /* 時計エリア */
+      .clock-area { padding: 12px 16px; gap: 10px; }
+
+      /* パターンパネル */
+      .patterns-panel { padding: 14px 14px 12px; }
+      .pattern-name-in { font-size: 0.85rem; padding: 7px 10px; }
+      .pattern-save-btn { padding: 7px 14px; font-size: 0.8rem; }
+      .pattern-item { padding: 9px 11px; }
+      .pattern-load-btn { padding: 5px 12px; font-size: 0.78rem; }
+    }
+
+    /* empty hint */
+    .sidebar-empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 0.78rem;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="header-mark"></div>
+    <h1>時給計算</h1>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="pdf-btn" onclick="window.print()">PDF 出力</button>
+    <button class="add-btn" onclick="addClient()">+ クライアント追加</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div id="sidebar"></div>
+  </aside>
+  <div class="main">
+    <div class="clock-area">
+      <div class="clock-svg-wrap">
+        <svg id="clockSVG" viewBox="0 0 300 300"></svg>
+      </div>
+      <div class="clock-legend">
+        <div class="legend-item">
+          <div class="legend-line am"></div>
+          <span>AM（濃）</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-line pm"></div>
+          <span>PM（淡）</span>
+        </div>
+      </div>
+      <div class="ring-legend" id="ringLegend"></div>
+      <div class="workdays-row">
+        <label>稼働日数</label>
+        <div class="workdays-spinner">
+          <button type="button" onclick="adjustDays(-1)">−</button>
+          <input type="number" id="workdaysInput" min="1" max="31" value="20"
+            onchange="onDaysChange(this.value)"
+            onkeydown="if(event.key==='Enter')this.blur()">
+          <button type="button" onclick="adjustDays(+1)">＋</button>
+        </div>
+        <span class="workdays-unit">日 / 月</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右パネル: パターン管理 -->
+  <div class="patterns-panel">
+    <div class="patterns-panel-title">保存パターン</div>
+    <div class="pattern-save-row">
+      <input class="pattern-name-in" id="ptnNameIn" type="text" placeholder="パターン名…"
+        onkeydown="if(event.key==='Enter')savePattern()">
+      <button class="pattern-save-btn" onclick="savePattern()">保存</button>
+    </div>
+    <div class="pattern-list" id="ptnList"></div>
+  </div>
+</div>
+
+<!-- サマリーバー（常時表示） -->
+<div class="summary-bar" id="summaryBar"></div>
+
+<!-- モバイル用タブナビ -->
+<nav class="mobile-tabs">
+  <button class="tab-btn" data-tab="clients" onclick="setTab('clients')">
+    <span class="tab-icon">≡</span>
+    <span class="tab-label">クライアント</span>
+  </button>
+  <button class="tab-btn tab-active" data-tab="clock" onclick="setTab('clock')">
+    <span class="tab-icon">◎</span>
+    <span class="tab-label">時計</span>
+  </button>
+  <button class="tab-btn" data-tab="patterns" onclick="setTab('patterns')">
+    <span class="tab-icon">☆</span>
+    <span class="tab-label">パターン</span>
+  </button>
+</nav>
+
+<script>
+/* ── Natural muted colors ── */
+const COLORS = [
+  '#8a9e82', // sage green
+  '#b87d70', // dusty rose
+  '#a8915c', // warm sand
+  '#7e94ab', // slate blue
+  '#9e8ab0', // dusty lavender
+  '#7a9e8e', // sea green
+  '#b08060', // terracotta
+  '#909090', // neutral grey
+];
+
+/* ── State ── */
+let clients      = [];
+let nextId       = 1;
+let workDays     = 20;
+let patterns     = JSON.parse(localStorage.getItem('hourlyCalcPatterns') || '[]');
+
+/* ── Pattern helpers ── */
+function savePatterns() {
+  localStorage.setItem('hourlyCalcPatterns', JSON.stringify(patterns));
+}
+
+function savePattern() {
+  const input = document.getElementById('ptnNameIn');
+  const name  = input.value.trim();
+  if (!name) { input.focus(); return; }
+  patterns.push({
+    name,
+    clients:  JSON.parse(JSON.stringify(clients)),
+    workDays,
+    savedAt: Date.now()
+  });
+  savePatterns();
+  input.value = '';
+  renderPatterns();
+}
+
+function loadPattern(idx) {
+  const p = patterns[idx];
+  if (!p) return;
+  clients  = JSON.parse(JSON.stringify(p.clients));
+  workDays = p.workDays ?? 20;
+  // nextId を衝突しないよう更新
+  const maxId = clients.flatMap(c => [c.id, ...c.blocks.map(b => b.id)]);
+  nextId = (maxId.length ? Math.max(...maxId) : 0) + 1;
+  // 稼働日数UIに反映
+  const inp = document.getElementById('workdaysInput');
+  if (inp) inp.value = workDays;
+  render();
+}
+
+function deletePattern(idx) {
+  patterns.splice(idx, 1);
+  savePatterns();
+  renderPatterns();
+}
+
+function renderPatterns() {
+  const list = document.getElementById('ptnList');
+  if (!list) return;
+  if (patterns.length === 0) {
+    list.innerHTML = `<div class="pattern-empty">まだ保存された<br>パターンはありません</div>`;
+    return;
+  }
+  list.innerHTML = patterns.map((p, i) => `
+    <div class="pattern-item">
+      <span class="pattern-item-name" title="${esc(p.name)}">${esc(p.name)}</span>
+      <button class="pattern-load-btn" onclick="loadPattern(${i})">読込</button>
+      <button class="pattern-del-btn"  onclick="deletePattern(${i})">✕</button>
+    </div>`).join('');
+}
+
+/* ── CRUD ── */
+function addClient() {
+  clients.push({
+    id: nextId++,
+    name: `クライアント ${clients.length + 1}`,
+    rate: 2000,
+    color: COLORS[clients.length % COLORS.length],
+    blocks: [{ id: nextId++, start: '09:00', end: '17:00' }]
+  });
+  render();
+}
+function delClient(id)       { clients = clients.filter(c => c.id !== id); render(); }
+function addBlock(cid)       { clients.find(c=>c.id===cid).blocks.push({id:nextId++,start:'10:00',end:'12:00'}); render(); }
+function delBlock(cid,bid)   { const c=clients.find(c=>c.id===cid); c.blocks=c.blocks.filter(b=>b.id!==bid); render(); }
+function onName(id,v)          { clients.find(c=>c.id===id).name=v; renderClock(); renderLegend(); renderSummary(); }
+function onRate(id,v)          { clients.find(c=>c.id===id).rate=+v||0; render(); }
+function onColor(id,v)         { clients.find(c=>c.id===id).color=v; render(); }
+function onTimeH(cid,bid,f,v)  {
+  const b = clients.find(c=>c.id===cid).blocks.find(b=>b.id===bid);
+  b[f] = String(v).padStart(2,'0') + ':' + b[f].split(':')[1];
+  render();
+}
+function onTimeM(cid,bid,f,v)  {
+  const b = clients.find(c=>c.id===cid).blocks.find(b=>b.id===bid);
+  b[f] = b[f].split(':')[0] + ':' + String(v).padStart(2,'0');
+  render();
+}
+
+/* ── Select HTML builders ── */
+function onDaysChange(v) { workDays = Math.min(31, Math.max(1, +v || 1)); renderSummary(); }
+function adjustDays(d)   {
+  workDays = Math.min(31, Math.max(1, workDays + d));
+  document.getElementById('workdaysInput').value = workDays;
+  renderSummary();
+}
+
+function adjustRate(id, delta) {
+  const c = clients.find(c => c.id === id);
+  c.rate = Math.max(0, c.rate + delta);
+  render();
+}
+
+function rateSpinner(cid, rate) {
+  return `<div class="rate-spinner">
+    <button type="button" onclick="adjustRate(${cid},-50)">−</button>
+    <input type="number" min="0" step="50" value="${rate}"
+      onchange="onRate(${cid},this.value)"
+      onkeydown="if(event.key==='Enter')this.blur()">
+    <button type="button" onclick="adjustRate(${cid},+50)">＋</button>
+  </div>`;
+}
+
+function timeSelect(cid, bid, field, val) {
+  const [hv, mv] = val.split(':').map(Number);
+  const hopts = Array.from({length:24}, (_,i) =>
+    `<option value="${i}"${i===hv?' selected':''}>${String(i).padStart(2,'0')}</option>`
+  ).join('');
+  const mopts = [0,5,10,15,20,25,30,35,40,45,50,55].map(m =>
+    `<option value="${m}"${m===mv?' selected':''}>${String(m).padStart(2,'0')}</option>`
+  ).join('');
+  return `<select class="sel sel-h" onchange="onTimeH(${cid},${bid},'${field}',this.value)">${hopts}</select><span class="sep-colon">:</span><select class="sel sel-m" onchange="onTimeM(${cid},${bid},'${field}',this.value)">${mopts}</select>`;
+}
+
+/* ── Math ── */
+function t2m(t)     { const[h,m]=t.split(':').map(Number); return h*60+m; }
+function bHours(b)  { const d=t2m(b.end)-t2m(b.start); return d>0?d/60:0; }
+function bEarn(c,b) { return bHours(b)*c.rate; }
+function cEarn(c)   { return c.blocks.reduce((s,b)=>s+bEarn(c,b),0); }
+function cHours(c)  { return c.blocks.reduce((s,b)=>s+bHours(b),0); }
+function fmt(n)     { return '¥'+Math.round(n).toLocaleString(); }
+function fmtH(h)    { const hh=Math.floor(h),mm=Math.round((h-hh)*60); return mm?`${hh}h${mm}m`:`${hh}h`; }
+function esc(s)     { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ── SVG helpers ── */
+const NS = 'http://www.w3.org/2000/svg';
+function mk(tag, attrs, txt) {
+  const el = document.createElementNS(NS, tag);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (txt !== undefined) el.textContent = txt;
+  return el;
+}
+// angle: 0 = 12 o'clock, clockwise
+function polar(r, angleDeg) {
+  const a = (angleDeg - 90) * Math.PI / 180;
+  return [150 + r * Math.cos(a), 150 + r * Math.sin(a)];
+}
+// totalMinutes in [0,720) on 12-hour face → degrees
+function minToDeg(m) { return (m / 720) * 360; }
+
+// Draw arc path (r, relStartMin, relEndMin) where rel is 0-720
+function arcPath(r, s, e) {
+  const a1 = minToDeg(s), a2 = minToDeg(e);
+  const [x1,y1] = polar(r, a1);
+  const [x2,y2] = polar(r, a2);
+  const large = (e - s) > 360 ? 1 : 0;
+  return `M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r},0,${large},1,${x2.toFixed(2)},${y2.toFixed(2)}`;
+}
+
+/*
+ Ring layout — each client gets an AM ring (outer) and PM ring (inner),
+ spaced close together. Client pairs separated by a larger gap.
+
+ Client i:
+   AM ring: R_AM(i) = 113 - i * 26
+   PM ring: R_PM(i) = R_AM(i) - 12
+ Stroke width: 10
+ Max 4 clients cleanly.
+*/
+function getAMR(i) { return 113 - i * 26; }
+function getPMR(i) { return 113 - i * 26 - 12; }
+const STROKE = 10;
+
+/* ── Draw clock ── */
+function renderClock() {
+  const svg = document.getElementById('clockSVG');
+
+  // Fit size to available area
+  const area = svg.closest('.clock-area');
+  const availH = area.clientHeight - 120; // leave room for legend
+  const availW = area.clientWidth  - 40;
+  const size   = Math.max(180, Math.min(availH, availW, 360));
+  svg.setAttribute('width',  size);
+  svg.setAttribute('height', size);
+
+  svg.innerHTML = '';
+  const CX = 150, CY = 150;
+
+  // Face background
+  svg.appendChild(mk('circle', { cx:CX, cy:CY, r:147, fill:'#ffffff' }));
+  svg.appendChild(mk('circle', { cx:CX, cy:CY, r:147, fill:'none', stroke:'#e4e3e0', 'stroke-width':'1' }));
+
+  // Tick marks
+  for (let i = 0; i < 60; i++) {
+    const isHour = i % 5 === 0;
+    const angle  = (i / 60) * 360;
+    const [x1,y1] = polar(140, angle);
+    const [x2,y2] = polar(isHour ? 130 : 137, angle);
+    svg.appendChild(mk('line', {
+      x1: x1.toFixed(2), y1: y1.toFixed(2),
+      x2: x2.toFixed(2), y2: y2.toFixed(2),
+      stroke: isHour ? '#b8b5b0' : '#dbd9d5',
+      'stroke-width': isHour ? '1.5' : '0.8',
+      'stroke-linecap': 'round'
+    }));
+  }
+
+  // Empty ring tracks
+  const count = Math.min(clients.length, 4);
+  for (let i = 0; i < count; i++) {
+    [getAMR(i), getPMR(i)].forEach(r => {
+      svg.appendChild(mk('circle', {
+        cx:CX, cy:CY, r, fill:'none',
+        stroke:'#eeece9', 'stroke-width': STROKE
+      }));
+    });
+  }
+
+  // Arcs
+  clients.forEach((client, i) => {
+    if (i >= 4) return;
+    const rAM = getAMR(i);
+    const rPM = getPMR(i);
+
+    client.blocks.forEach(block => {
+      const startMin = t2m(block.start); // 0–1440
+      const endMin   = t2m(block.end);
+      if (endMin <= startMin) return;
+
+      // AM portion: 0–720
+      const amS = Math.max(startMin, 0);
+      const amE = Math.min(endMin, 720);
+      if (amE > amS) {
+        svg.appendChild(mk('path', {
+          d: arcPath(rAM, amS, amE),
+          fill:'none', stroke: client.color,
+          'stroke-width': STROKE, 'stroke-linecap':'round',
+          opacity:'0.88'
+        }, ''));
+        // tooltip
+        const p = svg.lastChild;
+        const tip = mk('title', {});
+        tip.textContent = `${client.name} AM  ${block.start}〜${Math.min(endMin,720)/60|0}:${String(Math.min(endMin,720)%60).padStart(2,'0')}  ${fmt(bEarn(client,block))}`;
+        p.appendChild(tip);
+      }
+
+      // PM portion: 720–1440 → mapped to 0–720
+      const pmS = Math.max(startMin, 720) - 720;
+      const pmE = Math.min(endMin, 1440)  - 720;
+      if (pmE > pmS) {
+        svg.appendChild(mk('path', {
+          d: arcPath(rPM, pmS, pmE),
+          fill:'none', stroke: client.color,
+          'stroke-width': STROKE, 'stroke-linecap':'round',
+          opacity:'0.38'
+        }, ''));
+        const p = svg.lastChild;
+        const tip = mk('title', {});
+        tip.textContent = `${client.name} PM  ${block.start}〜${block.end}  ${fmt(bEarn(client,block))}`;
+        p.appendChild(tip);
+      }
+    });
+  });
+
+  // Hour numbers
+  ['12','1','2','3','4','5','6','7','8','9','10','11'].forEach((lbl, h) => {
+    const angle = (h / 12) * 360;
+    const [x,y] = polar(122, angle);
+    svg.appendChild(mk('text', {
+      x: x.toFixed(2), y: y.toFixed(2),
+      'text-anchor':'middle', 'dominant-baseline':'central',
+      fill:'#9e9b96',
+      'font-size':'9.5',
+      'font-family':'Segoe UI, Helvetica Neue, sans-serif',
+      'font-weight':'600'
+    }, lbl));
+  });
+
+  // Center
+  svg.appendChild(mk('circle', { cx:CX, cy:CY, r:5.5, fill:'#e4e3e0' }));
+  svg.appendChild(mk('circle', { cx:CX, cy:CY, r:3,   fill:'#3a3835' }));
+}
+
+/* ── Ring legend ── */
+function renderLegend() {
+  const el = document.getElementById('ringLegend');
+  el.innerHTML = '';
+  clients.slice(0,4).forEach((c, i) => {
+    const item = document.createElement('div');
+    item.className = 'ring-legend-item';
+    item.innerHTML = `
+      <div class="ring-swatch" style="background:${c.color}"></div>
+      <span>${esc(c.name)}</span>`;
+    el.appendChild(item);
+  });
+}
+
+/* ── Sidebar ── */
+function renderSidebar() {
+  const el = document.getElementById('sidebar');
+  el.innerHTML = '';
+
+  if (clients.length === 0) {
+    el.innerHTML = `<div class="sidebar-empty">クライアントを<br>追加してください</div>`;
+    return;
+  }
+
+  clients.forEach((c, idx) => {
+    const card = document.createElement('div');
+    card.className = 'client-card';
+    card.style.borderLeftWidth = '3px';
+    card.style.borderLeftColor = c.color;
+
+    const blocks = c.blocks.map(b => `
+      <div class="block-row">
+        ${timeSelect(c.id, b.id, 'start', b.start)}
+        <span class="sep">→</span>
+        ${timeSelect(c.id, b.id, 'end', b.end)}
+        <span class="block-earn">${fmt(bEarn(c,b))}</span>
+        <button class="del-block" onclick="delBlock(${c.id},${b.id})">✕</button>
+      </div>`).join('');
+
+    const overLimit = idx >= 4
+      ? `<div style="font-size:0.68rem;color:#c0a050;margin-top:6px">※ 時計表示は4クライアントまで</div>`
+      : '';
+
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="color-wrap">
+          <div class="color-swatch" style="background:${c.color}"></div>
+          <input type="color" value="${c.color}" oninput="onColor(${c.id},this.value)">
+        </div>
+        <input class="name-input" type="text" value="${esc(c.name)}" oninput="onName(${c.id},this.value)">
+        <button class="icon-btn" onclick="delClient(${c.id})">✕</button>
+      </div>
+      <div class="rate-row">
+        <label>時給</label>
+        ${rateSpinner(c.id, c.rate)}
+        <span class="rate-unit">円 / 時</span>
+      </div>
+      <div class="blocks">${blocks}</div>
+      <button class="add-block-btn" onclick="addBlock(${c.id})">＋ 時間帯を追加</button>
+      ${overLimit}
+      <div class="card-foot">小計 <strong>${fmt(cEarn(c))}</strong></div>`;
+
+    el.appendChild(card);
+  });
+}
+
+/* ── Summary bar ── */
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  bar.innerHTML = '';
+  let total = 0;
+
+  clients.forEach(c => {
+    total += cEarn(c);
+    const item = document.createElement('div');
+    item.className = 'summ-item';
+    item.innerHTML = `
+      <div class="summ-dot" style="background:${c.color}"></div>
+      <span class="summ-name">${esc(c.name)}</span>
+      <span class="summ-hrs">${fmtH(cHours(c))}</span>
+      <span class="summ-amt">${fmt(cEarn(c))}</span>`;
+    bar.appendChild(item);
+  });
+
+  const box = document.createElement('div');
+  box.className = 'summ-total';
+  box.innerHTML = `
+    <span class="lbl">合計日給</span>
+    <span class="val">${fmt(total)}</span>
+    <span class="unit">/ 日</span>`;
+  bar.appendChild(box);
+
+  const mbox = document.createElement('div');
+  mbox.className = 'summ-month';
+  mbox.innerHTML = `
+    <span class="lbl">月給 (×${workDays}日)</span>
+    <span class="val">${fmt(total * workDays)}</span>
+    <span class="unit">/ 月</span>`;
+  bar.appendChild(mbox);
+}
+
+/* ── Full render ── */
+function render() {
+  renderSidebar();
+  renderClock();
+  renderLegend();
+  renderSummary();
+  renderPatterns();
+}
+
+/* ── Mobile tabs ── */
+function setTab(tab) {
+  const map = {
+    clients:  document.querySelector('.sidebar'),
+    clock:    document.querySelector('.main'),
+    patterns: document.querySelector('.patterns-panel'),
+  };
+  Object.values(map).forEach(el => el && el.classList.remove('tab-active'));
+  if (map[tab]) map[tab].classList.add('tab-active');
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('tab-active', btn.dataset.tab === tab);
+  });
+  if (tab === 'clock') setTimeout(renderClock, 30);
+}
+
+function initMobile() {
+  if (window.innerWidth <= 768) setTab('clock');
+}
+
+window.addEventListener('resize', () => {
+  renderClock();
+  // デスクトップに戻ったらタブクラスをリセット
+  if (window.innerWidth > 768) {
+    document.querySelectorAll('.sidebar,.main,.patterns-panel')
+      .forEach(el => el.classList.remove('tab-active'));
+  }
+});
+
+/* ── Initial data ── */
+clients = [
+  { id: nextId++, name: 'クライアント A', rate: 2000, color: '#8a9e82',
+    blocks: [{ id: nextId++, start: '09:00', end: '12:00' }] },
+  { id: nextId++, name: 'クライアント B', rate: 1500, color: '#b87d70',
+    blocks: [{ id: nextId++, start: '13:30', end: '18:00' }] }
+];
+render();
+initMobile();
+</script>
+</body>
+</html>
