@@ -761,16 +761,6 @@
       <div class="clock-svg-wrap">
         <svg id="clockSVG" viewBox="0 0 300 300"></svg>
       </div>
-      <div class="clock-legend">
-        <div class="legend-item">
-          <div class="legend-line am"></div>
-          <span>AM（濃）</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-line pm"></div>
-          <span>PM（淡）</span>
-        </div>
-      </div>
       <div class="ring-legend" id="ringLegend"></div>
       <div class="workdays-row">
         <label>稼働日数</label>
@@ -1028,39 +1018,22 @@ function polar(r, angleDeg) {
   const a = (angleDeg - 90) * Math.PI / 180;
   return [150 + r * Math.cos(a), 150 + r * Math.sin(a)];
 }
-// totalMinutes in [0,720) on 12-hour face → degrees
-function minToDeg(m) { return (m / 720) * 360; }
+// 0〜1440分 → 0〜360度（24時間で一周）
+function minToDeg24(m) { return (m / 1440) * 360; }
 
-// Draw arc path (r, relStartMin, relEndMin) where rel is 0-720
-function arcPath(r, s, e) {
-  const a1 = minToDeg(s), a2 = minToDeg(e);
+function arcPath24(r, s, e) {
+  const a1 = minToDeg24(s), a2 = minToDeg24(e);
   const [x1,y1] = polar(r, a1);
   const [x2,y2] = polar(r, a2);
-  const large = (e - s) > 360 ? 1 : 0;
+  const large = (e - s) > 720 ? 1 : 0;
   return `M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r},0,${large},1,${x2.toFixed(2)},${y2.toFixed(2)}`;
 }
 
-/*
- Ring layout — each client gets an AM ring (outer) and PM ring (inner),
- spaced close together. Client pairs separated by a larger gap.
-
- Client i:
-   AM ring: R_AM(i) = 113 - i * 26
-   PM ring: R_PM(i) = R_AM(i) - 12
- Stroke width: 10
- Max 4 clients cleanly.
-*/
-function getAMR(i) { return 113 - i * 26; }
-function getPMR(i) { return 113 - i * 26 - 12; }
-const STROKE = 10;
-
-/* ── Draw clock ── */
+/* ── Draw clock（24時間・1本リング）── */
 function renderClock() {
   const svg = document.getElementById('clockSVG');
-
-  // Fit size to available area
   const area = svg.closest('.clock-area');
-  const availH = area.clientHeight - 120; // leave room for legend
+  const availH = area.clientHeight - 110;
   const availW = area.clientWidth  - 40;
   const size   = Math.max(180, Math.min(availH, availW, 360));
   svg.setAttribute('width',  size);
@@ -1068,98 +1041,64 @@ function renderClock() {
 
   svg.innerHTML = '';
   const CX = 150, CY = 150;
+  const RING_R = 106, RING_W = 16;
 
-  // Face background
+  // 文字盤
   svg.appendChild(mk('circle', { cx:CX, cy:CY, r:147, fill:'#ffffff' }));
   svg.appendChild(mk('circle', { cx:CX, cy:CY, r:147, fill:'none', stroke:'#e4e3e0', 'stroke-width':'1' }));
 
-  // Tick marks
-  for (let i = 0; i < 60; i++) {
-    const isHour = i % 5 === 0;
-    const angle  = (i / 60) * 360;
-    const [x1,y1] = polar(140, angle);
-    const [x2,y2] = polar(isHour ? 130 : 137, angle);
+  // 目盛り（24時間）
+  for (let i = 0; i < 24; i++) {
+    const angle  = (i / 24) * 360;
+    const major  = i % 3 === 0;
+    const [x1,y1] = polar(141, angle);
+    const [x2,y2] = polar(major ? 130 : 136, angle);
     svg.appendChild(mk('line', {
-      x1: x1.toFixed(2), y1: y1.toFixed(2),
-      x2: x2.toFixed(2), y2: y2.toFixed(2),
-      stroke: isHour ? '#b8b5b0' : '#dbd9d5',
-      'stroke-width': isHour ? '1.5' : '0.8',
+      x1:x1.toFixed(2), y1:y1.toFixed(2),
+      x2:x2.toFixed(2), y2:y2.toFixed(2),
+      stroke: major ? '#b8b5b0' : '#dbd9d5',
+      'stroke-width': major ? '1.5' : '0.8',
       'stroke-linecap': 'round'
     }));
   }
 
-  // Empty ring tracks
-  const count = Math.min(clients.length, 4);
-  for (let i = 0; i < count; i++) {
-    [getAMR(i), getPMR(i)].forEach(r => {
-      svg.appendChild(mk('circle', {
-        cx:CX, cy:CY, r, fill:'none',
-        stroke:'#eeece9', 'stroke-width': STROKE
-      }));
-    });
-  }
+  // リングトラック（背景）
+  svg.appendChild(mk('circle', {
+    cx:CX, cy:CY, r:RING_R, fill:'none',
+    stroke:'#eeece9', 'stroke-width': RING_W
+  }));
 
-  // Arcs
-  clients.forEach((client, i) => {
-    if (i >= 4) return;
-    const rAM = getAMR(i);
-    const rPM = getPMR(i);
-
+  // 各クライアントの稼働時間アーク
+  clients.forEach(client => {
     client.blocks.forEach(block => {
-      const startMin = t2m(block.start); // 0–1440
-      const endMin   = t2m(block.end);
-      if (endMin <= startMin) return;
-
-      // AM portion: 0–720
-      const amS = Math.max(startMin, 0);
-      const amE = Math.min(endMin, 720);
-      if (amE > amS) {
-        svg.appendChild(mk('path', {
-          d: arcPath(rAM, amS, amE),
-          fill:'none', stroke: client.color,
-          'stroke-width': STROKE, 'stroke-linecap':'round',
-          opacity:'0.88'
-        }, ''));
-        // tooltip
-        const p = svg.lastChild;
-        const tip = mk('title', {});
-        tip.textContent = `${client.name} AM  ${block.start}〜${Math.min(endMin,720)/60|0}:${String(Math.min(endMin,720)%60).padStart(2,'0')}  ${fmt(bEarn(client,block))}`;
-        p.appendChild(tip);
-      }
-
-      // PM portion: 720–1440 → mapped to 0–720
-      const pmS = Math.max(startMin, 720) - 720;
-      const pmE = Math.min(endMin, 1440)  - 720;
-      if (pmE > pmS) {
-        svg.appendChild(mk('path', {
-          d: arcPath(rPM, pmS, pmE),
-          fill:'none', stroke: client.color,
-          'stroke-width': STROKE, 'stroke-linecap':'round',
-          opacity:'0.38'
-        }, ''));
-        const p = svg.lastChild;
-        const tip = mk('title', {});
-        tip.textContent = `${client.name} PM  ${block.start}〜${block.end}  ${fmt(bEarn(client,block))}`;
-        p.appendChild(tip);
-      }
+      const s = t2m(block.start), e = t2m(block.end);
+      if (e <= s) return;
+      const path = mk('path', {
+        d: arcPath24(RING_R, s, e),
+        fill:'none', stroke: client.color,
+        'stroke-width': RING_W, 'stroke-linecap':'round',
+        opacity:'0.88'
+      });
+      const tip = mk('title', {});
+      tip.textContent = `${client.name}  ${block.start}〜${block.end}  ${fmt(bEarn(client,block))}`;
+      path.appendChild(tip);
+      svg.appendChild(path);
     });
   });
 
-  // Hour numbers
-  ['12','1','2','3','4','5','6','7','8','9','10','11'].forEach((lbl, h) => {
-    const angle = (h / 12) * 360;
-    const [x,y] = polar(122, angle);
+  // 時刻ラベル（0, 3, 6, 9, 12, 15, 18, 21）
+  [0,3,6,9,12,15,18,21].forEach(h => {
+    const [x,y] = polar(122, (h/24)*360);
     svg.appendChild(mk('text', {
-      x: x.toFixed(2), y: y.toFixed(2),
+      x:x.toFixed(2), y:y.toFixed(2),
       'text-anchor':'middle', 'dominant-baseline':'central',
-      fill:'#9e9b96',
-      'font-size':'9.5',
+      fill:'#b0ada8', 'font-size':'9',
       'font-family':'Segoe UI, Helvetica Neue, sans-serif',
       'font-weight':'600'
-    }, lbl));
+    }, String(h)));
   });
 
-  // Center
+  // 中心
   svg.appendChild(mk('circle', { cx:CX, cy:CY, r:5.5, fill:'#e4e3e0' }));
   svg.appendChild(mk('circle', { cx:CX, cy:CY, r:3,   fill:'#3a3835' }));
 }
@@ -1168,7 +1107,7 @@ function renderClock() {
 function renderLegend() {
   const el = document.getElementById('ringLegend');
   el.innerHTML = '';
-  clients.slice(0,4).forEach((c, i) => {
+  clients.forEach((c, i) => {
     const item = document.createElement('div');
     item.className = 'ring-legend-item';
     item.innerHTML = `
@@ -1203,9 +1142,7 @@ function renderSidebar() {
         <button class="del-block" onclick="delBlock(${c.id},${b.id})">✕</button>
       </div>`).join('');
 
-    const overLimit = idx >= 4
-      ? `<div style="font-size:0.68rem;color:#c0a050;margin-top:6px">※ 時計表示は4クライアントまで</div>`
-      : '';
+    const overLimit = '';
 
     card.innerHTML = `
       <div class="card-header">
