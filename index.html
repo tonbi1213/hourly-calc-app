@@ -674,6 +674,53 @@
       /* 時計エリア */
       .clock-area { padding: 12px 16px; gap: 10px; }
 
+      /* ── ドラムロール時給ピッカー ── */
+      .drum-wrap {
+        position: relative;
+        width: 108px;
+        height: 132px; /* 44px × 3行 */
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        flex-shrink: 0;
+      }
+      .drum-track {
+        height: 100%;
+        overflow-y: scroll;
+        scroll-snap-type: y mandatory;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .drum-track::-webkit-scrollbar { display: none; }
+      .drum-pad  { height: 44px; flex-shrink: 0; }
+      .drum-item {
+        height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        scroll-snap-align: center;
+        font-size: 0.92rem;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.02em;
+      }
+      /* 上下フェード */
+      .drum-fade-top, .drum-fade-bot {
+        position: absolute; left: 0; right: 0; height: 48px;
+        pointer-events: none; z-index: 2;
+      }
+      .drum-fade-top { top: 0;
+        background: linear-gradient(to bottom, var(--bg) 10%, transparent); }
+      .drum-fade-bot { bottom: 0;
+        background: linear-gradient(to top,    var(--bg) 10%, transparent); }
+      /* 選択枠 */
+      .drum-sel {
+        position: absolute; top: 44px; left: 6px; right: 6px; height: 44px;
+        border-top: 1.5px solid var(--border2);
+        border-bottom: 1.5px solid var(--border2);
+        border-radius: 4px;
+        pointer-events: none; z-index: 1;
+      }
+
       /* パターンパネル */
       .patterns-panel { padding: 14px 14px 12px; }
       .pattern-name-in { font-size: 0.85rem; padding: 7px 10px; }
@@ -879,6 +926,57 @@ function adjustDays(d)   {
   document.getElementById('workdaysInput').value = workDays;
   renderSummary();
 }
+
+/* ── Drum picker (mobile only) ── */
+const DRUM_MIN = 500, DRUM_MAX = 10000, DRUM_STEP = 50, DRUM_H = 44;
+let drumTimers = {};
+
+function drumPicker(cid, rate) {
+  let items = '';
+  for (let v = DRUM_MIN; v <= DRUM_MAX; v += DRUM_STEP)
+    items += `<div class="drum-item">${v.toLocaleString()}</div>`;
+  return `
+    <div class="drum-wrap">
+      <div class="drum-track" id="drum-${cid}" onscroll="onDrumScroll(${cid},this)">
+        <div class="drum-pad"></div>${items}<div class="drum-pad"></div>
+      </div>
+      <div class="drum-fade-top"></div>
+      <div class="drum-fade-bot"></div>
+      <div class="drum-sel"></div>
+    </div>`;
+}
+
+function onDrumScroll(cid, el) {
+  clearTimeout(drumTimers[cid]);
+  drumTimers[cid] = setTimeout(() => {
+    const idx  = Math.round(el.scrollTop / DRUM_H);
+    const rate = Math.min(DRUM_MAX, Math.max(DRUM_MIN, DRUM_MIN + idx * DRUM_STEP));
+    el.scrollTo({ top: idx * DRUM_H, behavior: 'smooth' });
+    const c = clients.find(c => c.id === cid);
+    if (!c) return;
+    c.rate = rate;
+    // カードのブロック金額・小計をピンポイント更新（再描画しない）
+    c.blocks.forEach(b => {
+      const el = document.querySelector(`[data-earn="${b.id}"]`);
+      if (el) el.textContent = fmt(bEarn(c, b));
+    });
+    const foot = document.querySelector(`[data-foot="${cid}"]`);
+    if (foot) foot.innerHTML = `小計 <strong>${fmt(cEarn(c))}</strong>`;
+    renderSummary();
+  }, 120);
+}
+
+function initDrums() {
+  if (window.innerWidth > 768) return;
+  clients.forEach(c => {
+    const track = document.getElementById(`drum-${c.id}`);
+    if (!track) return;
+    const idx = Math.max(0, Math.round((c.rate - DRUM_MIN) / DRUM_STEP));
+    track.scrollTop = idx * DRUM_H;
+  });
+}
+
+function isMobile() { return window.innerWidth <= 768; }
 
 function adjustRate(id, delta) {
   const c = clients.find(c => c.id === id);
@@ -1101,7 +1199,7 @@ function renderSidebar() {
         ${timeSelect(c.id, b.id, 'start', b.start)}
         <span class="sep">→</span>
         ${timeSelect(c.id, b.id, 'end', b.end)}
-        <span class="block-earn">${fmt(bEarn(c,b))}</span>
+        <span class="block-earn" data-earn="${b.id}">${fmt(bEarn(c,b))}</span>
         <button class="del-block" onclick="delBlock(${c.id},${b.id})">✕</button>
       </div>`).join('');
 
@@ -1120,13 +1218,13 @@ function renderSidebar() {
       </div>
       <div class="rate-row">
         <label>時給</label>
-        ${rateSpinner(c.id, c.rate)}
+        ${isMobile() ? drumPicker(c.id, c.rate) : rateSpinner(c.id, c.rate)}
         <span class="rate-unit">円 / 時</span>
       </div>
       <div class="blocks">${blocks}</div>
       <button class="add-block-btn" onclick="addBlock(${c.id})">＋ 時間帯を追加</button>
       ${overLimit}
-      <div class="card-foot">小計 <strong>${fmt(cEarn(c))}</strong></div>`;
+      <div class="card-foot" data-foot="${c.id}">小計 <strong>${fmt(cEarn(c))}</strong></div>`;
 
     el.appendChild(card);
   });
@@ -1170,6 +1268,7 @@ function renderSummary() {
 /* ── Full render ── */
 function render() {
   renderSidebar();
+  initDrums();
   renderClock();
   renderLegend();
   renderSummary();
