@@ -652,6 +652,25 @@
       .block-row { padding: 7px 8px; }
       .del-block { font-size: 0.85rem; padding: 4px 6px; }
 
+      /* クライアント削除ボタン（モバイルで見やすく） */
+      .icon-btn {
+        font-size: 0 !important;          /* テキストを非表示 */
+        width: 30px !important;
+        height: 30px !important;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        background: #fee2e2 !important;
+        color: #ef4444 !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .icon-btn::after {
+        content: '🗑';
+        font-size: 0.85rem;
+      }
+
       /* 時計エリア */
       .clock-area { padding: 12px 16px; gap: 10px; }
 
