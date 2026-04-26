@@ -1220,7 +1220,8 @@ function setTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('tab-active', btn.dataset.tab === tab);
   });
-  if (tab === 'clock') setTimeout(renderClock, 30);
+  if (tab === 'clock')   setTimeout(renderClock, 30);
+  if (tab === 'clients') setTimeout(initDrums,  30);  // 表示後にドラム位置を再セット
 }
 
 function initMobile() {
